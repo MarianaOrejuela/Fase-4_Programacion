@@ -49,3 +49,35 @@ class Entidad(ABC):
     @property
     def codigo(self):
         return self._codigo
+
+#------CLASE cliente-----
+
+class Cliente(Entidad):
+    _contador_id = 1       #contador de clase para generar IDs unicos
+
+    def __init__(self, nombre, correo, telefono):
+        self.__id = Cliente._contador_id          # ID autoincremental
+        Cliente._contador_id += 1
+        self.__nombre = None
+        self.__correo = None
+        self.__telefono = None
+
+        # Se usan los setters para aplicar validaciones al crear el objeto
+        self.nombre = nombre
+        self.correo = correo
+        self.telefono = telefono
+
+  # propiedad: nombre
+@property
+    def nombre(self):
+        return self.__nombre
+
+    @nombre.setter
+    def nombre(self, valor):
+        if not valor or not valor.strip():
+            raise ErrorCliente("Client name cannot be empty.")
+        if len(valor.strip()) < 3:
+            raise ErrorCliente("Client name must have at least 3 characters.")
+        self.__nombre = valor.strip()
+
+
