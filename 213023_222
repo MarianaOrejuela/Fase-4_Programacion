@@ -2,8 +2,8 @@
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-from abc import ABC, abstractmethod
-from datetime import datetime
+from abc import ABC, abstractmethod    # para definir clases abstractas
+from datetime import datetime          # para registrar fecha y hora en logs
 import sys, os, re
 
 # Ruta donde se guardaran los eventos y errores del sistema.
@@ -35,7 +35,7 @@ class ErrorSistema(Exception):
 class ErrorValidacion(ErrorSistema):
     pass
 
-class ErrorReserva(ErrorSistema):
+class ErrorReserva(ErrorSistema): 
     pass
 
 class ErrorServicio(ErrorSistema):
@@ -80,4 +80,16 @@ class Cliente(Entidad):
             raise ErrorCliente("Client name must have at least 3 characters.")
         self.__nombre = valor.strip()
 
+# Propiedad: correo
 
+ @property
+    def correo(self):
+        return self.__correo
+
+    @correo.setter
+    def correo(self, valor):
+        # Validación básica de formato de correo con expresión regular
+        patron = r"^[\w\.-]+@[\w\.-]+\.\w{2,}$"
+        if not re.match(patron, valor):
+            raise ErrorCliente(f"Invalid email format: '{valor}'.")
+        self.__correo = valor
