@@ -1,1 +1,30 @@
+"""Software FJ - sistema de gestion de clientes, servicios y reservas."""
 
+import tkinter as tk
+from tkinter import ttk, messagebox
+from abc import ABC, abstractmethod
+from datetime import datetime
+import sys, os, re
+
+# Ruta donde se guardaran los eventos y errores del sistema.
+LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs.txt")
+
+#Expresiones para validar los datos
+ALFANUM = re.compile(r'^[A-Za-z0-9 \-]+$')   
+ALFA    = re.compile(r'^[A-Za-z ]+$')     
+
+MONEDA  = "COP"
+
+def log(nivel, msg):
+    """Guarda eventos/errores en logs.txt."""
+    try:
+        with open(LOG, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] [{nivel}] {msg}\n")
+    except OSError:
+        pass
+
+def fmt(v):                                    
+    return f"{MONEDA} ${v:,.0f}"
+
+# Excepcion personalizada del sistema
+class SoftwareFJError(Exception): pass         
