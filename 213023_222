@@ -28,3 +28,24 @@ def fmt(v):
 
 # Excepcion personalizada del sistema
 class SoftwareFJError(Exception): pass         
+
+class ErrorSistema(Exception):
+    pass
+
+class ErrorValidacion(ErrorSistema):
+    pass
+
+class ErrorReserva(ErrorSistema):
+    pass
+
+class ErrorServicio(ErrorSistema):
+    pass
+
+# CLASE ABSTRACTA GENERAL DEL SISTEMA
+class Entidad(ABC):
+    def __init__(self, codigo):
+        self._codigo = codigo
+
+    @property
+    def codigo(self):
+        return self._codigo
