@@ -50,46 +50,47 @@ class Entidad(ABC):
     def codigo(self):
         return self._codigo
 
-#------CLASE cliente-----
-
+# ---------- Cliente ----------
 class Cliente(Entidad):
-    _contador_id = 1       #contador de clase para generar IDs unicos
+    def __init__(self, nombre, documento, correo="", telefono=""):
+        super().__init__()
+        self.nombre, self.documento = nombre, documento
+        self.correo, self.telefono  = correo, telefono
 
-    def __init__(self, nombre, correo, telefono):
-        self.__id = Cliente._contador_id          # ID autoincremental
-        Cliente._contador_id += 1
-        self.__nombre = None
-        self.__correo = None
-        self.__telefono = None
-
-        # Se usan los setters para aplicar validaciones al crear el objeto
-        self.nombre = nombre
-        self.correo = correo
-        self.telefono = telefono
-
-  # propiedad: nombre
-@property
-    def nombre(self):
-        return self.__nombre
-
+    @property
+    def nombre(self): return self._nombre
     @nombre.setter
-    def nombre(self, valor):
-        if not valor or not valor.strip():
-            raise ErrorCliente("Client name cannot be empty.")
-        if len(valor.strip()) < 3:
-            raise ErrorCliente("Client name must have at least 3 characters.")
-        self.__nombre = valor.strip()
+    def nombre(self, v):
+        if not isinstance(v, str) or len(v.strip()) < 3:
+            raise SoftwareFJError("Nombre invalido (minimo 3 caracteres).")
+        self._nombre = v.strip()
 
-# Propiedad: correo
+    @property
+    def documento(self): return self._documento
+    @documento.setter
+    def documento(self, v):
+        v = (v or "").strip()
+        if not v.isdigit() or not (5 <= len(v) <= 15):
+            raise SoftwareFJError("Documento invalido (5-15 digitos).")
+        self._documento = v
 
- @property
-    def correo(self):
-        return self.__correo
-
+    @property
+    def correo(self): return self._correo
     @correo.setter
-    def correo(self, valor):
-        # Validación básica de formato de correo con expresión regular
-        patron = r"^[\w\.-]+@[\w\.-]+\.\w{2,}$"
-        if not re.match(patron, valor):
-            raise ErrorCliente(f"Invalid email format: '{valor}'.")
-        self.__correo = valor
+    def correo(self, v):
+        v = (v or "").strip()
+        if v and ("@" not in v or "." not in v):
+            raise SoftwareFJError("Correo invalido.")
+        self._correo = v
+
+    @property
+    def telefono(self): return self._telefono
+    @telefono.setter
+    def telefono(self, v):
+        v = (v or "").strip()
+        if v and not v.isdigit():
+            raise SoftwareFJError("Telefono invalido (solo numeros).")
+        self._telefono = v
+
+    def describir(self):
+        return f"Cliente #{self.id} - {self.nombre} (Doc: {self.documento})"
