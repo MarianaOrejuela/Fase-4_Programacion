@@ -10,8 +10,8 @@ import sys, os, re
 LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs.txt")
 
 #Expresiones para validar los datos
-ALFANUM = re.compile(r'^[A-Za-z0-9 \-]+$')   
-ALFA    = re.compile(r'^[A-Za-z ]+$')     
+ALFANUM = re.compile(r'^[A-Za-z0-9 \-]+$')    # letras + numeros + espacio + guion
+ALFA    = re.compile(r'^[A-Za-z ]+$')         # solo letras y espacios
 
 MONEDA  = "COP"
 
@@ -23,6 +23,7 @@ def log(nivel, msg):
     except OSError:
         pass
 
+#Convierte valores numericos al formato de pesos colombianos 
 def fmt(v):                                    
     return f"{MONEDA} ${v:,.0f}"
 
@@ -41,7 +42,7 @@ class ErrorReserva(ErrorSistema):
 class ErrorServicio(ErrorSistema):
     pass
 
-# CLASE ABSTRACTA GENERAL DEL SISTEMA
+# CLASE ABSTRATACTA BASE
 class Entidad(ABC):
     def __init__(self, codigo):
         self._codigo = codigo
@@ -50,7 +51,7 @@ class Entidad(ABC):
     def codigo(self):
         return self._codigo
 
-# ---------- Cliente ----------
+# CLASE CLIENTE
 class Cliente(Entidad):
     def __init__(self, nombre, documento, correo="", telefono=""):
         super().__init__()
@@ -94,3 +95,94 @@ class Cliente(Entidad):
 
     def describir(self):
         return f"Cliente #{self.id} - {self.nombre} (Doc: {self.documento})"
+
+
+#CLASE ABSTRACTA SERVICIO
+class Servicio(Entidad):
+    def __init__(self, nombre, precio):
+        super().__init__()
+#VALIDA QUE EL NOMBRE EXISTA
+        if not nombre or not str(nombre).strip():
+            raise SoftwareFJError("Nombre del servicio obligatorio.")
+#CONVIERTE EL PRECIO A NUMERO
+        try: precio = float(precio)
+        except (TypeError, ValueError):
+            raise SoftwareFJError(f"Precio ({MONEDA}) debe ser numerico.")
+#VALIDA QUE EL PRECIO SEA MAYOR A CERO
+        if precio <= 0:
+            raise SoftwareFJError(f"Precio ({MONEDA}) debe ser mayor a cero.")
+        self._nombre, self._precio = nombre.strip(), precio
+
+    @property
+    def nombre(self): return self._nombre
+    @property
+    def precio(self): return self._precio
+
+    @abstractmethod
+    def tipo(self): ...
+    # Sobrecarga simulada: cantidad, descuento e IVA opcionales.
+    @abstractmethod
+    def calcular_costo(self, cantidad=1, descuento=0.0, iva=0.0): ...
+
+    def _validar(self, cantidad, descuento, iva=0.0):
+        if cantidad <= 0:
+            raise SoftwareFJError("La cantidad debe ser mayor a cero.")
+        if not (0.0 <= descuento <= 1.0):
+            raise SoftwareFJError("Descuento debe estar entre 0 y 1.")
+        if not (0.0 <= iva <= 1.0):
+            raise SoftwareFJError("IVA debe estar entre 0 y 1.")
+
+    def describir(self):
+        return f"[{self.tipo()}] #{self.id} {self.nombre} - {fmt(self.precio)}"
+
+#CLASE RESERVA DE SALA
+class ReservaSala(Servicio):
+    def __init__(self, nombre, precio, capacidad):
+        super().__init__(nombre, precio)
+
+#CONVIERTE LA CAPACIDAD A TEXTO
+        v = (str(capacidad) if capacidad is not None else "").strip()
+
+#VALIDA QUE LA CAPACIDAD SEA ALFANUMERICA
+        if not v or not ALFANUM.match(v):
+            raise SoftwareFJError("Capacidad debe ser alfanumerica (ej. '30 personas', 'Sala 12A').")
+        self.capacidad = v
+    def tipo(self): return "Reserva de Sala"
+    def calcular_costo(self, cantidad=1, descuento=0.0, iva=0.0):
+
+#VALIDA LOS PARAMETROS
+        self._validar(cantidad, descuento, iva)
+
+#CALCULA EL COSTO FINAL
+        return self.precio * cantidad * (1 - descuento) * (1 + iva)
+
+#CLASE ALQUILER DE EQUIPO
+class AlquilerEquipo(Servicio):
+    def __init__(self, nombre, precio, marca="Generica"):
+        super().__init__(nombre, precio)
+        v = (marca or "Generica").strip() or "Generica"
+        if not ALFA.match(v):
+            raise SoftwareFJError("Marca debe contener solo letras.")
+        self.marca = v
+    def tipo(self): return "Alquiler de Equipo"
+    def calcular_costo(self, cantidad=1, descuento=0.0, iva=0.0):
+        self._validar(cantidad, descuento, iva)
+
+#APLICA DESCUENTO ADICIONAL SI EL ALQUIELER ES DE 7 DIAS O MAS
+        bono = 0.1 if cantidad >= 7 else 0     # 10% extra a partir de 7 dias.
+        return self.precio * cantidad * (1 - descuento - bono) * (1 + iva)
+
+#CLASE ASESORIA
+class Asesoria(Servicio):
+    def __init__(self, nombre, precio, especialidad):
+        super().__init__(nombre, precio)
+        v = (especialidad or "").strip()
+        if not v or not ALFA.match(v):
+            raise SoftwareFJError("Especialidad debe contener solo letras.")
+        self.especialidad = v
+    def tipo(self): return "Asesoria"
+    def calcular_costo(self, cantidad=1, descuento=0.0, iva=0.0):
+        self._validar(cantidad, descuento, iva)
+        return self.precio * cantidad * (1 - descuento) * (1 + iva)
+
+
