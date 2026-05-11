@@ -27,6 +27,7 @@ def log(nivel, msg):
 def fmt(v):                                    
     return f"{MONEDA} ${v:,.0f}"
 
+
 # Excepcion personalizada del sistema
 class SoftwareFJError(Exception): pass         
 
@@ -320,4 +321,138 @@ class Gestor:
     def buscar_reserva(self, id_):
         return self._buscar(self.reservas, id_, "reserva")
 
+# ---------- Interfaz Tkinter ----------
+# App hereda de tk.Tk -> ya ES la ventana principal.
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Software FJ"); self.geometry("950x620")     # Titulo y tamano inicial.
+        self.g = Gestor(); log("INFO", "GUI iniciada")          # Creamos el gestor que tiene la logica.
+        # Probamos un tema visual mas moderno. Si no esta disponible, no pasa nada.
+        try: ttk.Style(self).theme_use("clam")
+        except tk.TclError: pass
+
+        # Notebook = el contenedor de pestanas.
+        nb = ttk.Notebook(self); nb.pack(fill="both", expand=True, padx=10, pady=10)
+        # Creamos un Frame por cada pestana.
+        self.tab_cli = ttk.Frame(nb, padding=10); nb.add(self.tab_cli, text="Clientes")
+        self.tab_srv = ttk.Frame(nb, padding=10); nb.add(self.tab_srv, text="Servicios")
+        self.tab_res = ttk.Frame(nb, padding=10); nb.add(self.tab_res, text="Reservas")
+        # Construimos el contenido de cada pestana en metodos separados (codigo mas limpio).
+        self._build_cli(); self._build_srv(); self._build_res()
+# === Helpers reutilizables ===
+
+    # Crea una tabla (Treeview) con columnas y anchos personalizados.
+    def _tabla(self, parent, columnas, anchos):
+        t = ttk.Treeview(parent, columns=columnas, show="headings", height=9)
+        for c, a in zip(columnas, anchos):
+            t.heading(c, text=c.capitalize()); t.column(c, width=a, anchor="w")
+        t.pack(fill="both", expand=True, pady=(8, 0)); return t
+
+    # Ejecuta una funcion con manejo COMPLETO de excepciones (try/except/else/finally).
+    # Asi todos los botones tienen el mismo patron de manejo de errores sin repetir codigo.
+    def _accion(self, fn, ok_msg, refresh):
+        try: r = fn()
+        except SoftwareFJError as e:           # Errores conocidos: popup rojo.
+            log("ERROR", f"GUI: {e}"); messagebox.showerror("Error", str(e))
+        except Exception as e:                 # Errores inesperados: tambien popup, no se cae el programa.
+            log("ERROR", f"GUI INESP: {e}"); messagebox.showerror("Error inesperado", str(e))
+        else:                                  # else SOLO corre si NO hubo excepcion.
+            messagebox.showinfo("Exito", f"{ok_msg}\n{r}"); refresh()
+        finally:                               # finally SIEMPRE corre, util para auditoria.
+            log("INFO", "Operacion GUI finalizada")
+
+    # --- Clientes ---
+    # Construye el formulario y la tabla de clientes.
+    def _build_cli(self):
+        # LabelFrame = recuadro con titulo. Agrupa el formulario.
+        f = ttk.LabelFrame(self.tab_cli, text="Nuevo cliente", padding=10); f.pack(fill="x")
+        # Diccionario de StringVars para conectar inputs con variables de Python.
+        self.vc = {k: tk.StringVar() for k in ("n","d","c","t")}
+        # Creamos las 4 filas del formulario en un loop para ahorrar codigo repetido.
+        for i, (k, lbl) in enumerate([("n","Nombre *"),("d","Documento *"),
+                                       ("c","Correo"),("t","Telefono")]):
+            ttk.Label(f, text=lbl).grid(row=i, column=0, sticky="w", padx=4, pady=3)
+            ttk.Entry(f, textvariable=self.vc[k], width=35).grid(row=i, column=1, padx=4, pady=3)
+        # Boton para registrar. command apunta al metodo que se llama al hacer clic.
+        ttk.Button(f, text="Registrar", command=self._add_cli).grid(row=4, column=1, sticky="w", pady=6)
+        # Tabla con los clientes ya registrados.
+        self.tc = self._tabla(self.tab_cli, ("id","nombre","documento","correo","telefono"),
+                               [50, 200, 130, 200, 130])
+
+    # Accion del boton "Registrar". Usa el helper _accion para manejar errores.
+    def _add_cli(self):
+        self._accion(
+            # Esta lambda es la accion principal: registrar el cliente.
+            lambda: self.g.registrar_cliente(self.vc["n"].get(), self.vc["d"].get(),
+                                              self.vc["c"].get(), self.vc["t"].get()),
+            "Cliente registrado:",
+            # Esta otra lambda corre SOLO si todo salio bien: limpia el formulario y refresca tablas.
+            lambda: (self._refresh_cli(), self._refresh_combos(),
+                     [v.set("") for v in self.vc.values()]))
+
+    # Vuelve a llenar la tabla con la lista actual del gestor.
+    def _refresh_cli(self):
+        self.tc.delete(*self.tc.get_children())            # Borra filas viejas.
+        for c in self.g.clientes:                          # Mete una fila por cada cliente.
+            self.tc.insert("", "end", values=(c.id, c.nombre, c.documento, c.correo, c.telefono))
+
+    # --- Servicios ---
+    def _build_srv(self):
+        f = ttk.LabelFrame(self.tab_srv, text="Nuevo servicio", padding=10); f.pack(fill="x")
+        # Variables del formulario.
+        self.vs = {"tipo": tk.StringVar(value="sala"), "n": tk.StringVar(),
+                   "p": tk.StringVar(), "x": tk.StringVar()}
+        # Combobox con los tipos de servicio. state="readonly" para que no se pueda escribir libremente.
+        ttk.Label(f, text="Tipo *").grid(row=0, column=0, sticky="w", padx=4, pady=3)
+        cb = ttk.Combobox(f, textvariable=self.vs["tipo"], values=list(TIPOS),
+                          state="readonly", width=20)
+        cb.grid(row=0, column=1, sticky="w", padx=4, pady=3)
+        # Cuando el usuario cambia el tipo, llamamos a _on_tipo_change para cambiar la etiqueta del 4to campo.
+        cb.bind("<<ComboboxSelected>>", lambda _e: self._on_tipo_change())
+
+        # Campo de nombre.
+        ttk.Label(f, text="Nombre *").grid(row=1, column=0, sticky="w", padx=4, pady=3)
+        ttk.Entry(f, textvariable=self.vs["n"], width=35).grid(row=1, column=1, padx=4, pady=3)
+        # Campo de precio (en COP). Lo dejamos claro en la etiqueta.
+        ttk.Label(f, text=f"Precio ({MONEDA}) *").grid(row=2, column=0, sticky="w", padx=4, pady=3)
+        ttk.Entry(f, textvariable=self.vs["p"], width=35).grid(row=2, column=1, padx=4, pady=3)
+
+        # Etiqueta dinamica segun el tipo elegido (capacidad/marca/especialidad).
+        # La guardamos en self.lbl_extra para poder cambiarle el texto despues.
+        self.lbl_extra = ttk.Label(f, text=LABEL_EXTRA["sala"])
+        self.lbl_extra.grid(row=3, column=0, sticky="w", padx=4, pady=3)
+        ttk.Entry(f, textvariable=self.vs["x"], width=35).grid(row=3, column=1, padx=4, pady=3)
+
+        # Boton crear y tabla de servicios.
+        ttk.Button(f, text="Crear", command=self._add_srv).grid(row=4, column=1, sticky="w", pady=6)
+        self.ts = self._tabla(self.tab_srv, ("id","tipo","nombre","precio","extra"),
+                               [50, 150, 220, 150, 200])
+
+    # Cambia la etiqueta del 4to campo cuando se cambia el tipo en el combo.
+    def _on_tipo_change(self):
+        self.lbl_extra.config(text=LABEL_EXTRA[self.vs["tipo"].get()])
+        self.vs["x"].set("")                   # Limpia el valor previo para evitar confusiones.
+
+    # Accion del boton "Crear servicio".
+    def _add_srv(self):
+        def hacer():
+            # Convertimos el precio a numero. Si falla, lanzamos error claro.
+            try: precio = float(self.vs["p"].get())
+            except ValueError: raise SoftwareFJError(f"Precio ({MONEDA}) debe ser numero.")
+            # Si el campo extra esta vacio, mandamos None.
+            extra = self.vs["x"].get() or None
+            return self.g.crear_servicio(self.vs["tipo"].get(), self.vs["n"].get(), precio, extra)
+        self._accion(hacer, "Servicio creado:",
+                     lambda: (self._refresh_srv(), self._refresh_combos(),
+                              [self.vs[k].set("") for k in ("n","p","x")]))
+
+    # Refresca la tabla de servicios. Usa getattr para mostrar el atributo "extra" segun el tipo.
+    def _refresh_srv(self):
+        self.ts.delete(*self.ts.get_children())
+        for s in self.g.servicios:
+            # getattr(obj, "atributo", default): devuelve default si no existe ese atributo.
+            # Aprovechamos que cada subclase tiene su propio atributo (capacidad/marca/especialidad).
+            extra = getattr(s, "capacidad", None) or getattr(s, "marca", None) or getattr(s, "especialidad", "")
+            self.ts.insert("", "end", values=(s.id, s.tipo(), s.nombre, fmt(s.precio), extra))
 
