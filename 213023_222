@@ -184,5 +184,140 @@ class Asesoria(Servicio):
     def calcular_costo(self, cantidad=1, descuento=0.0, iva=0.0):
         self._validar(cantidad, descuento, iva)
         return self.precio * cantidad * (1 - descuento) * (1 + iva)
+# cantidad = horas. Aplica descuento y luego IVA.
+        return self.precio * cantidad * (1 - descuento) * (1 + iva)
+
+# === Subclase 2: AlquilerEquipo ===
+class AlquilerEquipo(Servicio):
+    def __init__(self, nombre, precio, marca="Generica"):
+        super().__init__(nombre, precio)
+        v = (marca or "Generica").strip() or "Generica"
+        # Marca ALFABETICA: solo letras y espacios. "Sony123" => error.
+        if not ALFA.match(v):
+            raise SoftwareFJError("Marca debe contener solo letras.")
+        self.marca = v
+    def tipo(self): return "Alquiler de Equipo"
+    def calcular_costo(self, cantidad=1, descuento=0.0, iva=0.0):
+        self._validar(cantidad, descuento, iva)
+        bono = 0.1 if cantidad >= 7 else 0     # 10% extra a partir de 7 dias.
+        # cantidad = dias. Resta el bono al precio antes del IVA.
+        return self.precio * cantidad * (1 - descuento - bono) * (1 + iva)
+
+
+# === Subclase 3: Asesoria ===
+class Asesoria(Servicio):
+    def __init__(self, nombre, precio, especialidad):
+        super().__init__(nombre, precio)
+        v = (especialidad or "").strip()
+        # Especialidad ALFABETICA y obligatoria.
+        if not v or not ALFA.match(v):
+            raise SoftwareFJError("Especialidad debe contener solo letras.")
+        self.especialidad = v
+    def tipo(self): return "Asesoria"
+    def calcular_costo(self, cantidad=1, descuento=0.0, iva=0.0):
+        self._validar(cantidad, descuento, iva)
+        # cantidad = sesiones. Calculo simple con descuento e IVA.
+        return self.precio * cantidad * (1 - descuento) * (1 + iva)
+
+# ---------- Reserva con maquina de estados ----------
+# Tabla que define que cambios de estado son validos.
+# Por ejemplo: solo se puede "procesar" una reserva si esta CONFIRMADA.
+ESTADOS_TRANS = {
+    "confirmar": ({"PENDIENTE"},               "CONFIRMADA"),   # Pendiente -> Confirmada
+    "cancelar":  ({"PENDIENTE", "CONFIRMADA"}, "CANCELADA"),    # Pendiente o Confirmada -> Cancelada
+    "procesar":  ({"CONFIRMADA"},              "PROCESADA"),    # Solo Confirmada -> Procesada
+}
+
+# Reserva relaciona un Cliente con un Servicio. Tambien hereda de Entidad (tiene id).
+class Reserva(Entidad):
+    def __init__(self, cliente, servicio, cantidad=1, descuento=0.0, iva=0.0):
+        # Verificamos que los objetos sean del tipo correcto antes de hacer nada.
+        if not isinstance(cliente, Cliente) or not isinstance(servicio, Servicio):
+            raise SoftwareFJError("Cliente o servicio invalido.")
+        super().__init__()
+        # Guardamos las referencias y los parametros del calculo.
+        self.cliente, self.servicio          = cliente, servicio
+        self.cantidad, self.descuento, self.iva = cantidad, descuento, iva
+        self.estado = "PENDIENTE"              # Toda reserva nace pendiente.
+        # POLIMORFISMO en accion: no sabemos si servicio es Sala, Equipo o Asesoria,
+        # pero todas tienen calcular_costo. Python escoge la version correcta en tiempo real.
+        try:
+            self.costo = servicio.calcular_costo(cantidad, descuento, iva)
+        except Exception as e:
+            # Si el calculo falla, envolvemos el error original con un mensaje mas claro.
+            raise SoftwareFJError(f"No se pudo calcular el costo: {e}") from e
+
+    # Metodo interno que aplica una transicion de estado validandola contra ESTADOS_TRANS.
+    def _cambiar(self, accion):
+        validos, nuevo = ESTADOS_TRANS[accion]
+        if self.estado not in validos:
+            raise SoftwareFJError(
+                f"No se puede {accion}: estado actual '{self.estado}', requerido {sorted(validos)}.")
+        self.estado = nuevo
+        log("EVENTO", f"Reserva #{self.id} -> {nuevo}")
+
+    # Tres metodos publicos que el resto del programa usa.
+    def confirmar(self): self._cambiar("confirmar")
+    def cancelar(self):  self._cambiar("cancelar")
+    def procesar(self):  self._cambiar("procesar")
+
+    # Como se imprime una reserva al hacer print(reserva).
+    def describir(self):
+        return (f"Reserva #{self.id} [{self.estado}] | {self.cliente.nombre} -> "
+                f"{self.servicio.nombre} | x{self.cantidad} | {fmt(self.costo)} "
+                f"| {self._fecha:%Y-%m-%d %H:%M}")
+
+
+# ---------- Gestor central ----------
+# Diccionario que mapea texto -> clase. Asi podemos elegir la subclase de Servicio segun lo que el usuario diga.
+TIPOS = {"sala": ReservaSala, "equipo": AlquilerEquipo, "asesoria": Asesoria}
+
+# Etiquetas que cambian en la GUI segun el tipo elegido.
+LABEL_EXTRA = {"sala":     "Capacidad (alfanumerica) *",
+               "equipo":   "Marca (solo letras)",
+               "asesoria": "Especialidad (solo letras) *"}
+
+# Esta clase es el "cerebro": guarda todos los datos y expone metodos para crearlos/buscarlos.
+# La interfaz grafica (App) NO sabe nada de la logica, solo le pide cosas al Gestor.
+class Gestor:
+    def __init__(self):
+        # Tres listas en memoria. Si cerramos el programa se pierden (no hay base de datos).
+        self.clientes, self.servicios, self.reservas = [], [], []
+
+    def registrar_cliente(self, nombre, doc, correo="", telefono=""):
+        # Antes de crear, revisamos que no exista otro con el mismo documento (evitar duplicados).
+        if any(c.documento == (doc or "").strip() for c in self.clientes):
+            raise SoftwareFJError(f"Ya existe cliente con documento {doc}.")
+        c = Cliente(nombre, doc, correo, telefono)  # El constructor de Cliente valida los datos.
+        self.clientes.append(c); log("EVENTO", f"Cliente: {c}")
+        return c
+
+    def crear_servicio(self, tipo, nombre, precio, extra=None):
+        # Buscamos en el diccionario TIPOS la clase correspondiente al texto recibido.
+        cls = TIPOS.get((tipo or "").strip().lower())
+        if not cls:
+            raise SoftwareFJError(f"Tipo desconocido: '{tipo}' (use sala/equipo/asesoria).")
+        # Si es equipo y no nos dieron marca, ponemos "Generica" por defecto.
+        if cls is AlquilerEquipo and not extra: extra = "Generica"
+        s = cls(nombre, precio, extra)         # Instanciamos la clase elegida (Sala, Equipo o Asesoria).
+        self.servicios.append(s); log("EVENTO", f"Servicio: {s}")
+        return s
+
+    # Busqueda interna y generica: la usan _buscar cliente, servicio y reserva.
+    def _buscar(self, lista, id_, tipo):
+        for x in lista:
+            if x.id == id_: return x
+        raise SoftwareFJError(f"No existe {tipo} con id {id_}.")
+
+    def crear_reserva(self, id_cli, id_serv, cantidad=1, descuento=0.0, iva=0.0):
+        # Primero localizamos cliente y servicio. Si alguno no existe, _buscar lanza excepcion.
+        r = Reserva(self._buscar(self.clientes, id_cli, "cliente"),
+                    self._buscar(self.servicios, id_serv, "servicio"),
+                    cantidad, descuento, iva)
+        self.reservas.append(r); log("EVENTO", f"Reserva: {r}")
+        return r
+
+    def buscar_reserva(self, id_):
+        return self._buscar(self.reservas, id_, "reserva")
 
 
