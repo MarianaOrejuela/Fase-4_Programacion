@@ -418,3 +418,79 @@ class App(tk.Tk):
             extra = getattr(s, "capacidad", None) or getattr(s, "marca", None) or getattr(s, "especialidad", "")
             self.ts.insert("", "end", values=(s.id, s.tipo(), s.nombre, fmt(s.precio), extra))
 
+# ---------- Simulacion ----------
+# Se ejecuta con: python software_fj.py --sim
+# Hace 18 operaciones (validas e invalidas) para demostrar que todo funciona.
+def simular():
+    g = Gestor(); log("INFO", "Inicio simulacion")
+    print("=" * 50, "\nSIMULACION SOFTWARE FJ\n", "=" * 50, sep="")
+    ctx = {}                                   # Diccionario para guardar referencias a objetos creados.
+
+    # Funcion auxiliar que ejecuta una operacion mostrando el resultado y registrando en log.
+    # Aqui se ve el patron try/except/else/finally COMPLETO (lo que pide el enunciado).
+    def correr(n, desc, accion):
+        print(f"\n[{n:02d}] {desc}")
+        try: r = accion()
+        except SoftwareFJError as e:           # Atrapamos errores conocidos.
+            print(f"   -> Error: {e}"); log("ERROR", f"OP{n}: {e}")
+        except Exception as e:                 # Atrapamos cualquier otro error inesperado.
+            print(f"   -> Inesperado: {e}"); log("ERROR", f"OP{n} INESP: {e}")
+        else:                                  # Solo si NO hubo error, mostramos el resultado.
+            print(f"   -> OK: {r}"); return r
+        finally:                               # SIEMPRE registramos que la operacion termino.
+            log("INFO", f"OP{n} fin: {desc}")
+
+    # Operaciones 1-4: clientes (validos e invalidos).
+    ctx["c1"] = correr(1, "Cliente valido",
+        lambda: g.registrar_cliente("Juan Perez", "1023456789", "j@x.com"))
+    correr(2, "Nombre invalido", lambda: g.registrar_cliente("J", "1023456790"))
+    correr(3, "Documento invalido", lambda: g.registrar_cliente("Ana Gomez", "ABC"))
+    ctx["c2"] = correr(4, "Cliente valido 2",
+        lambda: g.registrar_cliente("Maria Lopez", "1098765432"))
+
+    # Operaciones 5-9: servicios (validos e invalidos).
+    ctx["s1"] = correr(5, "Sala valida (capacidad alfanumerica)",
+        lambda: g.crear_servicio("sala", "Sala Premium", 50000, "30 personas"))
+    ctx["s2"] = correr(6, "Equipo valido (marca alfabetica)",
+        lambda: g.crear_servicio("equipo", "Proyector", 30000, "Epson"))
+    ctx["s3"] = correr(7, "Asesoria valida (especialidad alfabetica)",
+        lambda: g.crear_servicio("asesoria", "Consultoria TI", 120000, "Ciberseguridad"))
+    correr(8, "Marca con numeros (debe fallar)",
+        lambda: g.crear_servicio("equipo", "Camara", 20000, "Sony123"))
+    correr(9, "Precio negativo (debe fallar)",
+        lambda: g.crear_servicio("sala", "Mini", -500, "10A"))
+
+    # Operaciones 10-14: reservas (validas e invalidas).
+    r1 = correr(10, "Reserva valida sala 3h con IVA 19%",
+        lambda: g.crear_reserva(ctx["c1"].id, ctx["s1"].id, cantidad=3, iva=0.19))
+    r2 = correr(11, "Reserva valida equipo 7d con bono",
+        lambda: g.crear_reserva(ctx["c2"].id, ctx["s2"].id, cantidad=7))
+    r3 = correr(12, "Reserva valida asesoria 2 sesiones 10% desc",
+        lambda: g.crear_reserva(ctx["c1"].id, ctx["s3"].id, cantidad=2, descuento=0.10))
+    correr(13, "Cliente inexistente",
+        lambda: g.crear_reserva(999, ctx["s1"].id))
+    correr(14, "Cantidad cero",
+        lambda: g.crear_reserva(ctx["c1"].id, ctx["s1"].id, cantidad=0))
+
+    # Operaciones 15-18: cambios de estado (incluyendo uno que debe fallar).
+    # El truco (metodo(), obj)[1] es para que la lambda devuelva el objeto despues de ejecutar el metodo.
+    correr(15, "Confirmar reserva 1", lambda: (r1.confirmar(), r1)[1])
+    correr(16, "Procesar reserva 1", lambda: (r1.procesar(), r1)[1])
+    correr(17, "Cancelar reserva 2", lambda: (r2.cancelar(), r2)[1])
+    correr(18, "Procesar reserva sin confirmar (debe fallar)",
+        lambda: (r3.procesar(), r3)[1])
+
+    # Resumen final por consola.
+    print(f"\nResumen: {len(g.clientes)} clientes, {len(g.servicios)} servicios, {len(g.reservas)} reservas")
+    for r in g.reservas: print(" -", r)
+    log("INFO", "Fin simulacion")
+
+
+# ---------- Punto de entrada ----------
+# Esto SOLO se ejecuta si corremos el archivo directamente (no si lo importamos).
+if __name__ == "__main__":
+    if "--sim" in sys.argv:                    # python software_fj.py --sim => corre la simulacion.
+        simular()
+    else:                                      # python software_fj.py => abre la interfaz grafica.
+        try: App().mainloop()                  # mainloop mantiene la ventana abierta.
+        finally: log("INFO", "App cerrada")    # Cuando se cierra la ventana, lo registramos.
