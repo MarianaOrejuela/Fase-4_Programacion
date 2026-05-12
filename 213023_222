@@ -28,20 +28,8 @@ def fmt(v):
     return f"{MONEDA} ${v:,.0f}"
 
 
-# Excepcion personalizada del sistema
+#EXCEPCION PERSONALIZADA DEL SISTEMA
 class SoftwareFJError(Exception): pass         
-
-class ErrorSistema(Exception):
-    pass
-
-class ErrorValidacion(ErrorSistema):
-    pass
-
-class ErrorReserva(ErrorSistema): 
-    pass
-
-class ErrorServicio(ErrorSistema):
-    pass
 
 # CLASE ABSTRATACTA BASE
 class Entidad(ABC):
@@ -59,6 +47,7 @@ class Cliente(Entidad):
         self.nombre, self.documento = nombre, documento
         self.correo, self.telefono  = correo, telefono
 
+#nombre con validacion
     @property
     def nombre(self): return self._nombre
     @nombre.setter
@@ -67,6 +56,7 @@ class Cliente(Entidad):
             raise SoftwareFJError("Nombre invalido (minimo 3 caracteres).")
         self._nombre = v.strip()
 
+#documento con validacion
     @property
     def documento(self): return self._documento
     @documento.setter
@@ -76,6 +66,7 @@ class Cliente(Entidad):
             raise SoftwareFJError("Documento invalido (5-15 digitos).")
         self._documento = v
 
+#correo opcional con validacion
     @property
     def correo(self): return self._correo
     @correo.setter
@@ -85,6 +76,7 @@ class Cliente(Entidad):
             raise SoftwareFJError("Correo invalido.")
         self._correo = v
 
+#telefono opcional, solo numeros
     @property
     def telefono(self): return self._telefono
     @telefono.setter
@@ -94,6 +86,7 @@ class Cliente(Entidad):
             raise SoftwareFJError("Telefono invalido (solo numeros).")
         self._telefono = v
 
+# Implementa el metodo abstracto de Entidad.
     def describir(self):
         return f"Cliente #{self.id} - {self.nombre} (Doc: {self.documento})"
 
@@ -102,14 +95,14 @@ class Cliente(Entidad):
 class Servicio(Entidad):
     def __init__(self, nombre, precio):
         super().__init__()
-#VALIDA QUE EL NOMBRE EXISTA
+#Valida que el nombre exista
         if not nombre or not str(nombre).strip():
             raise SoftwareFJError("Nombre del servicio obligatorio.")
-#CONVIERTE EL PRECIO A NUMERO
+#Convierte el precio a numero
         try: precio = float(precio)
         except (TypeError, ValueError):
             raise SoftwareFJError(f"Precio ({MONEDA}) debe ser numerico.")
-#VALIDA QUE EL PRECIO SEA MAYOR A CERO
+#Valida que el precio sea mayo a cero
         if precio <= 0:
             raise SoftwareFJError(f"Precio ({MONEDA}) debe ser mayor a cero.")
         self._nombre, self._precio = nombre.strip(), precio
@@ -136,7 +129,7 @@ class Servicio(Entidad):
     def describir(self):
         return f"[{self.tipo()}] #{self.id} {self.nombre} - {fmt(self.precio)}"
 
-#CLASE RESERVA DE SALA
+# Subclase 1 CLASE RESERVA DE SALA
 class ReservaSala(Servicio):
     def __init__(self, nombre, precio, capacidad):
         super().__init__(nombre, precio)
@@ -155,37 +148,6 @@ class ReservaSala(Servicio):
         self._validar(cantidad, descuento, iva)
 
 #CALCULA EL COSTO FINAL
-        return self.precio * cantidad * (1 - descuento) * (1 + iva)
-
-#CLASE ALQUILER DE EQUIPO
-class AlquilerEquipo(Servicio):
-    def __init__(self, nombre, precio, marca="Generica"):
-        super().__init__(nombre, precio)
-        v = (marca or "Generica").strip() or "Generica"
-        if not ALFA.match(v):
-            raise SoftwareFJError("Marca debe contener solo letras.")
-        self.marca = v
-    def tipo(self): return "Alquiler de Equipo"
-    def calcular_costo(self, cantidad=1, descuento=0.0, iva=0.0):
-        self._validar(cantidad, descuento, iva)
-
-#APLICA DESCUENTO ADICIONAL SI EL ALQUIELER ES DE 7 DIAS O MAS
-        bono = 0.1 if cantidad >= 7 else 0     # 10% extra a partir de 7 dias.
-        return self.precio * cantidad * (1 - descuento - bono) * (1 + iva)
-
-#CLASE ASESORIA
-class Asesoria(Servicio):
-    def __init__(self, nombre, precio, especialidad):
-        super().__init__(nombre, precio)
-        v = (especialidad or "").strip()
-        if not v or not ALFA.match(v):
-            raise SoftwareFJError("Especialidad debe contener solo letras.")
-        self.especialidad = v
-    def tipo(self): return "Asesoria"
-    def calcular_costo(self, cantidad=1, descuento=0.0, iva=0.0):
-        self._validar(cantidad, descuento, iva)
-        return self.precio * cantidad * (1 - descuento) * (1 + iva)
-# cantidad = horas. Aplica descuento y luego IVA.
         return self.precio * cantidad * (1 - descuento) * (1 + iva)
 
 # === Subclase 2: AlquilerEquipo ===
