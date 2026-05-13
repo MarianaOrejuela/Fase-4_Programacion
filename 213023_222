@@ -33,12 +33,16 @@ class SoftwareFJError(Exception): pass
 
 # CLASE ABSTRATACTA BASE
 class Entidad(ABC):
-    def __init__(self, codigo):
-        self._codigo = codigo
-
+    _cont = 0
+    def __init__(self):
+        Entidad._cont += 1
+        self._id = Entidad._cont
+        self._fecha = datetime.now()
     @property
-    def codigo(self):
-        return self._codigo
+    def id(self): return self._id
+    @abstractmethod
+    def describir(self): ...
+    def __str__(self): return self.describir()
 
 # CLASE CLIENTE
 class Cliente(Entidad):
@@ -417,6 +421,66 @@ class App(tk.Tk):
             # Aprovechamos que cada subclase tiene su propio atributo (capacidad/marca/especialidad).
             extra = getattr(s, "capacidad", None) or getattr(s, "marca", None) or getattr(s, "especialidad", "")
             self.ts.insert("", "end", values=(s.id, s.tipo(), s.nombre, fmt(s.precio), extra))
+
+ # --- Reservas ---
+    def _build_res(self):
+        f = ttk.LabelFrame(self.tab_res, text="Nueva reserva", padding=10); f.pack(fill="x")
+        self.vr = {k: tk.StringVar(value=d) for k, d in
+                   [("c",""),("s",""),("q","1"),("d","0"),("i","0")]}
+        ttk.Label(f, text="Cliente *").grid(row=0, column=0, sticky="w", padx=4, pady=3)
+        self.cb_c = ttk.Combobox(f, textvariable=self.vr["c"], width=42, state="readonly")
+        self.cb_c.grid(row=0, column=1, padx=4, sticky="w")
+        ttk.Label(f, text="Servicio *").grid(row=1, column=0, sticky="w", padx=4, pady=3)
+        self.cb_s = ttk.Combobox(f, textvariable=self.vr["s"], width=42, state="readonly")
+        self.cb_s.grid(row=1, column=1, padx=4, sticky="w")
+        for i, (k, lbl) in enumerate([("q","Cantidad *"),("d","Descuento (0-1)"),("i","IVA (0-1)")], 2):
+            ttk.Label(f, text=lbl).grid(row=i, column=0, sticky="w", padx=4, pady=3)
+            ttk.Entry(f, textvariable=self.vr[k], width=10).grid(row=i, column=1, sticky="w", padx=4)
+        ttk.Button(f, text="Reservar", command=self._add_res).grid(row=5, column=1, sticky="w", pady=6)
+
+        # Botones para cambiar el estado de la reserva seleccionada en la tabla.
+        bf = ttk.Frame(self.tab_res); bf.pack(fill="x", pady=(8,0))
+        ttk.Label(bf, text="Acciones (selecciona una reserva):").pack(side="left", padx=4)
+        for txt, fn in [("Confirmar","confirmar"),("Cancelar","cancelar"),("Procesar","procesar")]:
+            ttk.Button(bf, text=txt, command=lambda a=fn: self._accion_estado(a)).pack(side="left", padx=4)
+
+        self.tr = self._tabla(self.tab_res,
+                               ("id","cliente","servicio","cant","costo","estado","fecha"),
+                               [50, 160, 200, 60, 140, 110, 130])
+
+    def _refresh_combos(self):
+        self.cb_c["values"] = [f"{c.id} - {c.nombre}" for c in self.g.clientes]
+        self.cb_s["values"] = [f"{s.id} - {s.tipo()}: {s.nombre}" for s in self.g.servicios]
+
+    def _add_res(self):
+        def hacer():
+            if not self.vr["c"].get() or not self.vr["s"].get():
+                raise SoftwareFJError("Seleccione cliente y servicio.")
+            try:
+                cid = int(self.vr["c"].get().split(" - ")[0])
+                sid = int(self.vr["s"].get().split(" - ")[0])
+                q   = int(self.vr["q"].get())
+                d   = float(self.vr["d"].get() or "0")
+                i   = float(self.vr["i"].get() or "0")
+            except ValueError: raise SoftwareFJError("Cantidad/descuento/IVA numericos.")
+            return self.g.crear_reserva(cid, sid, q, d, i)
+        self._accion(hacer, "Reserva creada:", self._refresh_res)
+
+    def _accion_estado(self, accion):
+        sel = self.tr.selection()
+        if not sel:
+            messagebox.showwarning("Atencion", "Selecciona una reserva."); return
+        rid = int(self.tr.item(sel[0])["values"][0])
+        def hacer():
+            r = self.g.buscar_reserva(rid); getattr(r, accion)(); return r
+        self._accion(hacer, f"Reserva {accion}:", self._refresh_res)
+
+    def _refresh_res(self):
+        self.tr.delete(*self.tr.get_children())
+        for r in self.g.reservas:
+            self.tr.insert("", "end", values=(r.id, r.cliente.nombre,
+                f"{r.servicio.tipo()}: {r.servicio.nombre}", r.cantidad,
+                fmt(r.costo), r.estado, r._fecha.strftime("%Y-%m-%d %H:%M")))
 
 # ---------- Simulacion ----------
 # Se ejecuta con: python software_fj.py --sim
